@@ -1,3 +1,6 @@
+# ── Personal config (copy config.example.json → config.json and edit) ─────────
+config.json
+
 # ── Secrets & credentials (NEVER commit these) ────────────────────────────────
 credentials.json
 mycreds.txt
@@ -9,6 +12,7 @@ audit_checker.log
 .drive_index_cache.pkl
 availability_report.xlsx
 *.xlsx.bak
+gsheet_cache/
 
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
