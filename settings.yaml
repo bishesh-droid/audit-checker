@@ -1,0 +1,16 @@
+# pydrive2 settings.yaml
+# Place this file in the same directory as audit_checker.py.
+# Generate credentials.json from: https://console.cloud.google.com/
+#   → APIs & Services → Credentials → Create OAuth 2.0 Client ID (Desktop)
+
+client_config_backend: file
+client_config_file: credentials.json   # path to your OAuth2 client-secrets JSON
+
+save_credentials: true
+save_credentials_backend: file
+save_credentials_file: mycreds.txt     # cached token; auto-created on first run
+
+get_refresh_token: true
+
+oauth_scope:
+  - https://www.googleapis.com/auth/drive.readonly

@@ -1,0 +1,25 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# requirements.txt  –  audit_checker.py
+# Python 3.10+
+# Install with:  pip install -r requirements.txt
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Core data handling
+pandas>=2.0.0
+openpyxl>=3.1.0          # Excel read/write engine used by pandas
+
+# Fuzzy filename matching (C extension — very fast)
+rapidfuzz>=3.6.0
+
+# Progress bars
+tqdm>=4.66.0
+
+# Google Drive integration (optional but recommended)
+# If you don't need Drive checking, this can be omitted.
+pydrive2>=1.19.0
+
+# ──────────────────────────────────────────────────────────────────────────────
+# All other imports (pathlib, os, re, pickle, logging, argparse,
+# concurrent.futures, multiprocessing, urllib) are part of the Python
+# standard library and require no separate installation.
+# ──────────────────────────────────────────────────────────────────────────────
