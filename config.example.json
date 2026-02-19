@@ -1,0 +1,41 @@
+{
+  "_comment": "Copy this file to config.json and fill in your own values.",
+
+  "gsheet_url": "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID/edit",
+
+  "excel_dir": "./excel",
+
+  "drives": [
+    "/run/media/YOUR_USERNAME/YOUR_DRIVE_NAME"
+  ],
+
+  "output": "./availability_report.xlsx",
+
+  "columns": {
+    "course_name": "Course",
+    "semester":    "Sem",
+    "term":        "Term",
+    "status":      "Status"
+  },
+
+  "scanning": {
+    "fuzzy_threshold":     75,
+    "cache_file":          ".drive_index_cache.pkl",
+    "cache_max_age_hours": 24,
+    "gsheet_cache_hours":  1,
+    "max_workers":         4,
+    "extensions_filter":   []
+  },
+
+  "google_drive": {
+    "enabled":          true,
+    "credentials_file": "credentials.json",
+    "settings_file":    "settings.yaml",
+    "download_dest":    "/run/media/YOUR_USERNAME/YOUR_DRIVE_NAME"
+  },
+
+  "logging": {
+    "log_file": "audit_checker.log",
+    "level":    "INFO"
+  }
+}

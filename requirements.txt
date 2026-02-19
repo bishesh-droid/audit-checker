@@ -18,6 +18,9 @@ tqdm>=4.66.0
 # If you don't need Drive checking, this can be omitted.
 pydrive2>=1.19.0
 
+# Folder downloads from Google Drive (required for --download)
+gdown>=5.0.0
+
 # ──────────────────────────────────────────────────────────────────────────────
 # All other imports (pathlib, os, re, pickle, logging, argparse,
 # concurrent.futures, multiprocessing, urllib) are part of the Python
