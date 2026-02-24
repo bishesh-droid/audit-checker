@@ -31,7 +31,8 @@
     "enabled":          true,
     "credentials_file": "credentials.json",
     "settings_file":    "settings.yaml",
-    "download_dest":    "/run/media/YOUR_USERNAME/YOUR_DRIVE_NAME"
+    "download_dest":    "/run/media/YOUR_USERNAME/YOUR_DRIVE_NAME",
+    "min_free_gb":      5.0
   },
 
   "logging": {

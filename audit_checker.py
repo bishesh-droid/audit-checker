@@ -23,6 +23,7 @@ import multiprocessing
 import os
 import pickle
 import re
+import shutil
 import sys
 import time
 import urllib.error
@@ -159,6 +160,7 @@ DEFAULT_CONFIG: dict = {
         "enabled":          False,
         "credentials_file": "credentials.json",
         "settings_file":    "settings.yaml",
+        "min_free_gb":      5.0,
     },
     "logging": {
         "log_file": "audit_checker.log",
@@ -745,6 +747,47 @@ def download_from_gdrive(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#  DISK SPACE UTILITIES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_disk_usage(path: str) -> tuple[float, float, float]:
+    """
+    Return *(total_gb, used_gb, free_gb)* for the filesystem that contains
+    *path*.  Walks up to the nearest existing ancestor if *path* itself does
+    not yet exist (e.g. a download destination that hasn't been created yet).
+    """
+    try:
+        p = Path(path)
+        while not p.exists() and p.parent != p:
+            p = p.parent
+        usage = shutil.disk_usage(str(p))
+        gb = 1024 ** 3
+        return usage.total / gb, usage.used / gb, usage.free / gb
+    except Exception as exc:
+        logger.warning("Could not read disk usage for '%s': %s", path, exc)
+        return 0.0, 0.0, float("inf")
+
+
+def print_disk_stats(path: str, label: str = "") -> None:
+    """Print a one-line disk usage bar for the filesystem at *path*."""
+    try:
+        total, used, free = get_disk_usage(path)
+        if total == 0:
+            print("      Disk: (unknown)")
+            return
+        pct    = used / total * 100
+        filled = int(30 * used / total)
+        bar    = "\u2588" * filled + "\u2591" * (30 - filled)
+        prefix = f"  [{label}] " if label else "      "
+        print(
+            f"{prefix}Disk [{bar}] {pct:.1f}% used  |  "
+            f"{free:.2f} GB free / {total:.2f} GB total"
+        )
+    except Exception:
+        pass
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #  REPORT GENERATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -847,6 +890,8 @@ def run_audit(
     settings_file:        str,
     download_missing:     bool = False,
     download_dest:        Optional[str] = None,
+    download_all:         bool = False,
+    min_free_gb:          float = 5.0,
 ) -> None:
 
     # ── Step 1: Read Excel ────────────────────────────────────────────────────
@@ -921,33 +966,73 @@ def run_audit(
 
         results.append(result)
 
-    # ── Step 5: Optional download of missing files ────────────────────────────
-    downloaded_ok = downloaded_fail = 0
-    if download_missing:
+    # ── Step 5: Download (per-course, all-or-nothing to avoid cross-disk splits) ─
+    downloaded_ok = downloaded_fail = skipped_courses = 0
+    do_download = download_missing or download_all
+
+    if do_download:
         if not download_dest:
-            print("\n[5/4] --download requires --download_dest — skipping.")
+            print("\n[5/4] --download / --download_all requires --download_dest — skipping.")
         else:
-            to_download = [
-                (r, c, col_name)
-                for r, c in zip(results, courses)
-                for col_name, ar in r.asset_results.items()
-                if ar.found_locally == "No" and ar.drive_status == "Available"
-            ]
-            if to_download:
-                print(f"\n[5/4] Downloading {len(to_download)} missing asset(s) to '{download_dest}' …")
-                for result, course, col_name in tqdm(to_download, desc="Downloading", unit="asset"):
-                    link    = course.asset_links.get(col_name)
-                    file_id = extract_drive_file_id(link) if link else None
-                    if file_id:
-                        # Organise downloads as: <dest>/<course_name>/<asset_key>/
+            Path(download_dest).mkdir(parents=True, exist_ok=True)
+
+            # ── Build a per-course map of assets to download ───────────────────
+            # Key = course_name  →  list of (CourseAuditResult, CourseEntry, col_name)
+            course_assets: dict[str, list[tuple]] = {}
+            for r, c in zip(results, courses):
+                for col_name, ar in r.asset_results.items():
+                    link = c.asset_links.get(col_name)
+                    if not link:
+                        continue
+                    if download_all and ar.drive_status not in (
+                        "No Link", "Broken Link", "Missing"
+                    ):
+                        course_assets.setdefault(c.course_name, []).append((r, c, col_name))
+                    elif download_missing and ar.found_locally == "No" and ar.drive_status == "Available":
+                        course_assets.setdefault(c.course_name, []).append((r, c, col_name))
+
+            total_assets = sum(len(v) for v in course_assets.values())
+
+            if course_assets:
+                mode = "all linked" if download_all else "missing"
+                print(
+                    f"\n[5/4] {total_assets} {mode} asset(s) across "
+                    f"{len(course_assets)} course(s) → '{download_dest}'"
+                )
+                print_disk_stats(download_dest, "Before")
+                print(
+                    f"      Min free space : {min_free_gb:.1f} GB  "
+                    f"(whole course is skipped if space is low — no cross-disk splits)"
+                )
+
+                for course_name, assets in tqdm(
+                    course_assets.items(), desc="Courses", unit="course"
+                ):
+                    # ── Disk-space guard — check BEFORE touching any file ──────
+                    _, _, free_gb = get_disk_usage(download_dest)
+                    if free_gb < min_free_gb:
+                        tqdm.write(
+                            f"\n  LOW SPACE: {free_gb:.2f} GB free "
+                            f"(< {min_free_gb:.1f} GB threshold) — "
+                            f"skipping '{course_name}' to keep course files together."
+                        )
+                        skipped_courses += 1
+                        continue
+
+                    # ── Download every asset for this course ───────────────────
+                    for result, course, col_name in assets:
+                        link    = course.asset_links.get(col_name)
+                        file_id = extract_drive_file_id(link) if link else None
+                        if not file_id:
+                            continue
+
+                        # Folder structure: <dest>/<Course Name>/<Asset Type>/
                         safe_course = re.sub(r'[<>:"/\\|?*]+', "_", course.course_name).strip()
                         asset_key   = ASSET_COLUMNS[col_name]["key"]
                         course_dest = str(Path(download_dest) / safe_course / asset_key)
+
                         ok, msg = download_from_gdrive(
-                            file_id,
-                            course_dest,
-                            asset_key,
-                            gdrive,
+                            file_id, course_dest, asset_key, gdrive,
                             original_link=link or "",
                         )
                         ar = result.asset_results[col_name]
@@ -956,12 +1041,18 @@ def run_audit(
                             ar.local_path    = msg
                             downloaded_ok   += 1
                         else:
-                            logger.warning("Download failed [%s / %s]: %s", course.course_name, col_name, msg)
+                            logger.warning(
+                                "Download failed [%s / %s]: %s",
+                                course.course_name, col_name, msg,
+                            )
                             downloaded_fail += 1
+
+                print_disk_stats(download_dest, "After ")
             else:
-                print("\n[5/4] No missing assets with available Drive links — nothing to download.")
+                mode = "all linked" if download_all else "missing"
+                print(f"\n[5/4] No {mode} assets with Drive links — nothing to download.")
     else:
-        print("\n[5/4] Download step skipped (use --download to enable).")
+        print("\n[5/4] Download step skipped (use --download or --download_all to enable).")
 
     # ── Generate report ───────────────────────────────────────────────────────
     generate_report(results, output)
@@ -1001,10 +1092,11 @@ def run_audit(
         print("  " + "-" * 74)
 
     dl_lines = ""
-    if download_missing:
+    if do_download:
         dl_lines = (
             f"|  Downloaded OK        : {downloaded_ok:>8,}    |\n"
             f"|  Download failures    : {downloaded_fail:>8,}    |\n"
+            f"|  Courses skipped (low space): {skipped_courses:>3,}    |\n"
         )
 
     print(f"""
@@ -1178,6 +1270,19 @@ Default behaviour (no flags needed if config.json is set up):
              "Example: --download_dest \"/run/media/duffer/One Touch A\" "
              "(default: google_drive.download_dest in config.json)",
     )
+    dl.add_argument(
+        "--download_all", action="store_true",
+        help="Download ALL linked assets from Google Drive, even if already "
+             "found locally (full sync). Like --download but ignores local presence. "
+             "Files are saved as: <download_dest>/<Course Name>/<Asset Type>/",
+    )
+    dl.add_argument(
+        "--min_free_gb", type=float, metavar="GB",
+        help="Minimum free disk space (GB) to keep on the download drive. "
+             "If free space drops below this before a course starts, the entire "
+             "course is skipped so it is never split across disks. "
+             "(default: 5.0 GB)",
+    )
 
     # ── Cache ──────────────────────────────────────────────────────────────────
     cch = parser.add_argument_group("CACHE  (control re-downloading and re-scanning)")
@@ -1239,6 +1344,11 @@ def main() -> None:
     gdrive_on     = args.gdrive or config["google_drive"].get("enabled", False)
     creds_file    = config["google_drive"]["credentials_file"]
     settings_f    = config["google_drive"]["settings_file"]
+    min_free_gb   = (
+        args.min_free_gb
+        if getattr(args, "min_free_gb", None) is not None
+        else float(config["google_drive"].get("min_free_gb", 5.0))
+    )
     log_file      = config["logging"]["log_file"]
     course_col    = config["columns"].get("course_name", "Course")
     sem_col       = config["columns"].get("semester",    "Sem")
@@ -1303,6 +1413,8 @@ def main() -> None:
         settings_file=settings_f,
         download_missing=args.download,
         download_dest=args.download_dest or config["google_drive"].get("download_dest", ""),
+        download_all=getattr(args, "download_all", False),
+        min_free_gb=min_free_gb,
     )
 
 
