@@ -11,8 +11,14 @@ audit_checker.log
 *.log
 .drive_index_cache.pkl
 availability_report.xlsx
+download_progress.xlsx
 *.xlsx.bak
 gsheet_cache/
+disk_assignment.json
+download_results.json
+
+# ── Claude Code session files ─────────────────────────────────────────────────
+.claude/
 
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
