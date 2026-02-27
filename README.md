@@ -63,8 +63,7 @@ cd audit-checker
 pip install -r requirements.txt
 
 # 3. Set up rclone (required for downloader.py only)
-rclone config
-# → Add a new remote, name it "gdrive", type "Google Drive", follow the prompts
+#    See "rclone setup" under Tool 2 below for the full step-by-step walkthrough.
 ```
 
 ---
@@ -233,18 +232,84 @@ python3 downloader.py --refresh-sheet
 
 ### rclone setup (required)
 
-`downloader.py` uses rclone under the hood. Run this once:
+`downloader.py` uses rclone to download from Google Drive. Follow these steps once to set it up.
+
+#### 1. Install rclone
+
+```bash
+sudo apt install rclone        # Debian/Ubuntu/Kali
+# or
+curl https://rclone.org/install.sh | sudo bash
+```
+
+#### 2. Configure the Google Drive remote
+
+Run the interactive config wizard:
 
 ```bash
 rclone config
-# Add remote → name it "gdrive" → type "drive" → follow auth prompts
 ```
 
-Then verify it works:
+Work through the prompts as follows:
+
+```
+No remotes found, make a new one?
+n) New remote
+→ n
+
+name> gdrive
+
+Storage> drive
+# (type "drive" or the number shown next to "Google Drive")
+
+Google Application Client Id> [leave blank, press Enter]
+Google Application Client Secret> [leave blank, press Enter]
+
+scope> 1
+# (Full access — "drive")
+
+root_folder_id> [leave blank, press Enter]
+service_account_file> [leave blank, press Enter]
+
+Edit advanced config? (y/n)> n
+
+Use auto config?
+y) Yes  ← choose this if you have a browser on this machine
+n) No   ← choose this for headless/SSH servers
+→ y
+
+# A browser tab opens. Log in with your Google account and click Allow.
+# Return to the terminal once authorised.
+
+Configure this as a Shared Drive (Team Drive)?
+y) Yes
+n) No
+→ n
+
+--------------------
+[gdrive]
+type = drive
+scope = drive
+token = {...}
+--------------------
+Keep this "gdrive" remote?
+y) Yes
+→ y
+
+q) Quit config
+→ q
+```
+
+> **Headless / SSH server:** If you chose `n` for auto config, rclone prints a URL. Open it in a browser on any machine, authorise, copy the verification code back into the terminal.
+
+#### 3. Verify the remote works
 
 ```bash
 rclone lsd gdrive:
+# Should list the top-level folders in your Google Drive
 ```
+
+If that returns your Drive contents, rclone is ready and `downloader.py` will work.
 
 ---
 
@@ -326,13 +391,7 @@ pip install -r requirements.txt
 |---|---|---|
 | `rclone` | downloader | Authenticated Google Drive folder downloads |
 
-Install rclone from [rclone.org](https://rclone.org/install/) or:
-
-```bash
-sudo apt install rclone        # Debian/Ubuntu/Kali
-# or
-curl https://rclone.org/install.sh | sudo bash
-```
+Install rclone from [rclone.org](https://rclone.org/install/) or via `apt` / the official install script. Full setup walkthrough (including Google Drive auth) is in the [rclone setup](#rclone-setup-required) section under Tool 2.
 
 ---
 
